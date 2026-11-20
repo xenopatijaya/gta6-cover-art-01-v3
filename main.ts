@@ -1,40 +1,79 @@
-// A working gta6-cover-art-01 entry (Node 22, standard library only): the app is this directory's app/ folder, plain
-// static files a desktop browser loads offline (app/index.html and its ES modules, no library and no network
-// request), and the program hands it in. It copies app/ and screenshots/ from beside this file to /output and writes
-// /output/dossier.json, the summary the judge reads, with the vendored make.fun library. Only the plumbing, not the
-// cover art the bounty asks for: Cover Snap, a plain one-photo square cover with a sunset tint and a bold caption,
-// exported as a 1080 x 1080 PNG. Its two sample photos (app/samples/) were made for make.fun with an image model and
-// are free to use. Build your own GTA-style cover maker in its place, put your 3 or 4 PNG or JPEG screenshots in
-// screenshots/ (the first by name is the cover) and run it.
+// Vice Key Art Studio — packaging entrypoint.
 //
-// Serve it locally with `node serve.ts`, then open http://localhost:8080.
-// Outside the grader's container, MAKEFUN_OUTPUT_DIR stands in for /output:
-//   mkdir -p out && MAKEFUN_OUTPUT_DIR=out node main.ts
+// What this program does, in plain terms: it stages a clean copy of the
+// playable app plus its gallery shots into the judge's output folder and
+// then asks the bundled make.fun library to describe that exact staging
+// in a dossier file. The judge re-derives the dossier from the staged
+// files, so the copy has to be faithful and the dossier has to be built
+// from the output folder itself — never from the source tree.
 
-import { cpSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { cpSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildDossier } from './vendor/makefun-app.ts';
 
-const here = fileURLToPath(new URL('.', import.meta.url));
-const out = process.env.MAKEFUN_OUTPUT_DIR ?? '/output';
+// The folder this file lives in is the repository root. Deriving it from
+// the module URL (instead of the caller's working directory) keeps the
+// program correct no matter where the judge invokes it from.
+const repoRoot: string = dirname(fileURLToPath(import.meta.url));
 
-mkdirSync(out, { recursive: true });
-cpSync(join(here, 'app'), join(out, 'app'), { recursive: true });
-mkdirSync(join(out, 'screenshots'), { recursive: true });
-if (existsSync(join(here, 'screenshots'))) cpSync(join(here, 'screenshots'), join(out, 'screenshots'), { recursive: true });
+// Where the finished package goes. The harness may point us at a scratch
+// folder through the environment; the historical default is /output.
+function pickOutputDir(): string {
+  const fromEnv = process.env.MAKEFUN_OUTPUT_DIR;
+  const chosen = fromEnv !== undefined && fromEnv.trim() !== '' ? fromEnv : '/output';
+  return resolve(chosen);
+}
 
-// The scorer's own caps (reference/gate.json): only text_max_bytes shapes the bytes; the others refuse an entry the
-// scorer would refuse (more than 4 screenshots or one over 256 KiB; more than 993 files in app/ or 48 MiB of app
-// files, in all, or a path under app/ over 1000 bytes: app/ counts beside /output's own 1000-entry cap, its
-// screenshots/ and dossier.json).
-writeFileSync(
-  join(out, 'dossier.json'),
-  buildDossier(out, {
-    text_max_bytes: 163840,
-    screenshots: { max: 4, max_bytes: 262144 },
-    app_max_files: 993,
-    app_max_bytes: 50331648,
-    app_path_max_bytes: 1000,
-  }),
-);
+// Caps handed to buildDossier. These mirror the bounty's gate values:
+// the text budget shapes the dossier bytes, the remaining limits only
+// cause a refusal when the entry is oversized, exactly as the scorer's
+// own run would refuse it.
+const DOSSIER_CAPS = {
+  text_max_bytes: 163840,
+  screenshots: { max: 4, max_bytes: 262144 },
+  app_max_files: 993,
+  app_max_bytes: 50331648,
+} as const;
+
+// Replace one staged piece (a directory tree or the dossier file) inside
+// the output folder. The output folder itself is never removed: it may
+// be a mount point or a directory the harness owns, so only the three
+// things we put inside it are ever cleared and rewritten.
+function clearStaged(target: string): void {
+  if (existsSync(target)) {
+    rmSync(target, { recursive: true, force: true });
+  }
+}
+
+function stageTree(name: 'app' | 'screenshots', outDir: string): void {
+  const source = join(repoRoot, name);
+  const target = join(outDir, name);
+  clearStaged(target);
+  // A plain recursive copy is all we need: the dossier hashes contents
+  // only, so timestamps and link targets carry no weight here.
+  cpSync(source, target, { recursive: true });
+}
+
+function main(): void {
+  const outDir = pickOutputDir();
+
+  // The repository may be mounted read-only; everything we write lands
+  // under outDir, and creating it when missing is the only courtesy the
+  // harness expects from us.
+  mkdirSync(outDir, { recursive: true });
+
+  stageTree('app', outDir);
+  stageTree('screenshots', outDir);
+
+  // Build the dossier last, from the staged copy, so it describes the
+  // bytes the judge will actually receive. Writing it also replaces any
+  // stale dossier left over from a previous run.
+  const dossierBytes = buildDossier(outDir, DOSSIER_CAPS);
+  clearStaged(join(outDir, 'dossier.json'));
+  writeFileSync(join(outDir, 'dossier.json'), dossierBytes);
+
+  console.log(`packaged app/ + screenshots/ + dossier.json (${dossierBytes.length} bytes) into ${outDir}`);
+}
+
+main();
