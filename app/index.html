@@ -1,23 +1,118 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Cover Snap</title>
-<link rel="stylesheet" href="./style.css">
+<title>Vice Key Art Studio — GTA 6 Cover Art Maker</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<main class="app">
-  <section class="controls">
-    <h1>Cover Snap</h1>
-    <p>A photo and a caption, made into a square cover.</p>
-    <label>Photo <input id="photo" type="file" accept="image/*"></label>
-    <label>Caption <input id="caption" type="text" maxlength="40" value="Sunset Heist"></label>
-    <button id="export" type="button">Export PNG 1080 x 1080</button>
-    <p id="status" role="status"></p>
-  </section>
-  <canvas id="cover" width="1080" height="1080" aria-label="The cover"></canvas>
-</main>
-<script type="module" src="./src/main.js"></script>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">VK</span>
+    <div class="brand-text">
+      <strong>VICE KEY ART STUDIO</strong>
+      <small>Grand Theft Auto VI cover art maker — fully offline</small>
+    </div>
+  </div>
+  <div class="top-actions">
+    <button id="undoBtn" type="button" title="Undo (Ctrl+Z)">&#8630; Undo</button>
+    <button id="redoBtn" type="button" title="Redo (Ctrl+Y)">&#8631; Redo</button>
+    <span class="sep"></span>
+    <button class="export-btn" type="button" data-size="1080x1080">PNG 1080&times;1080</button>
+    <button class="export-btn" type="button" data-size="1080x1350">PNG 1080&times;1350</button>
+    <button class="export-btn" type="button" data-size="1920x1080">PNG 1920&times;1080</button>
+    <button id="exportAll" type="button" class="primary">Export all 3</button>
+  </div>
+</header>
+
+<div class="workspace">
+  <aside class="panel">
+    <nav class="steps">
+      <button class="step-tab active" type="button" data-step="photos">1 &middot; Photos</button>
+      <button class="step-tab" type="button" data-step="layout">2 &middot; Layout</button>
+      <button class="step-tab" type="button" data-step="grade">3 &middot; Grade</button>
+      <button class="step-tab" type="button" data-step="poster">4 &middot; Poster</button>
+    </nav>
+
+    <section id="step-photos" class="step active">
+      <h2>Cast your crew</h2>
+      <p class="hint">Pick a photo, then click any panel on the poster to cast it there — or fill every panel with one shot. Crops start face-aware; drag on the poster to reframe.</p>
+      <div id="photoGrid" class="photo-grid"></div>
+      <div class="row">
+        <button id="uploadBtn" type="button" class="primary">Add your photos</button>
+        <input id="fileInput" type="file" accept="image/*" multiple hidden>
+      </div>
+      <div class="row">
+        <button id="applyAllBtn" type="button">One photo fills all panels</button>
+      </div>
+      <p class="hint" id="photoCount"></p>
+      <p class="hint">Your photos never leave this device — they are read locally and drawn on canvas. Up to 8 uploads.</p>
+    </section>
+
+    <section id="step-layout" class="step">
+      <h2>Pick the composition</h2>
+      <p class="hint">Thirteen key-art compositions, from the seven-panel ensemble to the pop-out hero whose subject breaks the frame.</p>
+      <div id="layoutGrid" class="choice-grid"></div>
+    </section>
+
+    <section id="step-grade" class="step">
+      <h2>Grade the film</h2>
+      <p class="hint">Nine cinematic gradient-map grades, baked into every panel.</p>
+      <div id="gradeGrid" class="choice-grid"></div>
+      <h3>Finishing</h3>
+      <label class="check"><input type="checkbox" id="finHalftone"> Halftone print dots</label>
+      <label class="check"><input type="checkbox" id="finGrain" checked> Film grain</label>
+      <label class="check"><input type="checkbox" id="finVignette" checked> Vignette</label>
+    </section>
+
+    <section id="step-poster" class="step">
+      <h2>Words on the poster</h2>
+      <label class="field">Chrome title
+        <input id="inCaption" type="text" maxlength="26" value="VICE CITY">
+      </label>
+      <label class="field">Neon script subtitle
+        <input id="inSubtitle" type="text" maxlength="42" value="welcome back to Leonida">
+      </label>
+      <label class="field">Gazette name
+        <input id="inGazette" type="text" maxlength="30" value="LEONIDA GAZETTE">
+      </label>
+      <label class="field">Press quote
+        <input id="inQuote" type="text" maxlength="60" value="&ldquo;A sun-soaked fever dream.&rdquo;">
+      </label>
+      <label class="field">Billing block
+        <textarea id="inBilling" rows="3" maxlength="300">VICE KEY ART STUDIO PRESENTS A LEONIDA PICTURES PRODUCTION
+STARRING THE BOSS THE DRIVER THE GETAWAY MUSIC BY PALM CITY SOUND SYSTEM
+EDITED ON THE BOULEVARD PRINTED IN VICE CITY EST. 2026</textarea>
+      </label>
+      <p class="hint">The gold seal and barcode are generated from your title — change the words and the barcode changes too.</p>
+    </section>
+
+    <section class="panel-editor">
+      <h3 id="panelLabel">Panel 1</h3>
+      <label class="field">Role tag
+        <input id="panelTag" type="text" maxlength="18">
+      </label>
+      <label class="field">Photo
+        <select id="panelPhoto"></select>
+      </label>
+      <label class="field">Zoom <span id="zoomVal">1.00&times;</span>
+        <input id="panelZoom" type="range" min="1" max="3" step="0.01" value="1">
+      </label>
+      <div class="row">
+        <button id="panelFlip" type="button">Flip</button>
+        <button id="panelReset" type="button">Reset crop</button>
+      </div>
+      <p class="hint">Drag a panel to pan, scroll to zoom, double-click to reset.</p>
+    </section>
+  </aside>
+
+  <main class="stage-wrap">
+    <canvas id="stage" width="880" height="1100"></canvas>
+    <p class="stage-hint">Live preview — the chrome title, press strip, billing block, gold seal and barcode are drawn on canvas and export exactly as shown.</p>
+  </main>
+</div>
+
+<script type="module" src="src/main.js"></script>
 </body>
 </html>
